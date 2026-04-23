@@ -4,6 +4,7 @@ const cfgHelper = require('../helpers/config')
 const fs = require('fs')
 const path = require('path')
 const yaml = require('js-yaml')
+const { getDevFlags } = require('../helpers/dev-flags')
 
 /* global WIKI */
 
@@ -121,7 +122,8 @@ module.exports = {
    * Apply Dev Flags
    */
   async applyFlags() {
-    WIKI.models.knex.client.config.debug = WIKI.config.flags.sqllog
+    const devFlags = getDevFlags(WIKI.config)
+    WIKI.models.knex.client.config.debug = devFlags.sqlLog
   },
 
   /**

@@ -101,6 +101,10 @@ defaults:
     flags:
       ldapdebug: false
       sqllog: false
+    devFlags:
+      ldapDebugEnabled: false
+      ldapDebugMode: MASKED
+      sqlLog: false
     # System defaults
     channel: STABLE
     setup: false

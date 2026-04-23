@@ -16,6 +16,7 @@ extend type Mutation {
 
 type SystemQuery {
   flags: [SystemFlag] @auth(requires: ["manage:system"])
+  devFlags: SystemDevFlags @auth(requires: ["manage:system"])
   info: SystemInfo
   extensions: [SystemExtension] @auth(requires: ["manage:system"])
   exportStatus: SystemExportStatus @auth(requires: ["manage:system"])
@@ -28,6 +29,10 @@ type SystemQuery {
 type SystemMutation {
   updateFlags(
     flags: [SystemFlagInput]!
+  ): DefaultResponse @auth(requires: ["manage:system"])
+
+  updateDevFlags(
+    input: SystemDevFlagsInput!
   ): DefaultResponse @auth(requires: ["manage:system"])
 
   resetTelemetryClientId: DefaultResponse @auth(requires: ["manage:system"])
@@ -67,6 +72,23 @@ type SystemFlag {
 input SystemFlagInput {
   key: String!
   value: Boolean!
+}
+
+enum LdapDebugMode {
+  MASKED
+  VERBOSE
+}
+
+type SystemDevFlags {
+  ldapDebugEnabled: Boolean!
+  ldapDebugMode: LdapDebugMode!
+  sqlLog: Boolean!
+}
+
+input SystemDevFlagsInput {
+  ldapDebugEnabled: Boolean!
+  ldapDebugMode: LdapDebugMode!
+  sqlLog: Boolean!
 }
 
 type SystemInfo {

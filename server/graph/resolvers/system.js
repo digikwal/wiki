@@ -9,6 +9,7 @@ const graphHelper = require('../../helpers/graph')
 const request = require('request-promise')
 const crypto = require('crypto')
 const nanoid = require('nanoid/non-secure').customAlphabet('1234567890abcdef', 10)
+const { getDevFlags, normalizeLdapDebugMode } = require('../../helpers/dev-flags')
 
 const getosAsync = require('util').promisify(getos)
 
@@ -35,6 +36,9 @@ module.exports = {
         result.push({ key, value })
       }, [])
     },
+    devFlags () {
+      return getDevFlags(WIKI.config)
+    },
     async info () { return {} },
     async extensions () {
       const exts = Object.values(WIKI.extensions.ext).map(ext => _.pick(ext, ['key', 'title', 'description', 'isInstalled']))
@@ -57,10 +61,31 @@ module.exports = {
       WIKI.config.flags = _.transform(args.flags, (result, row) => {
         _.set(result, row.key, row.value)
       }, {})
+
+      // Maintain compatibility between legacy flags and new typed devFlags
+      _.set(WIKI.config, 'devFlags.ldapDebugEnabled', _.get(WIKI.config, 'flags.ldapdebug', false))
+      _.set(WIKI.config, 'devFlags.sqlLog', _.get(WIKI.config, 'flags.sqllog', false))
+      _.set(WIKI.config, 'devFlags.ldapDebugMode', _.get(WIKI.config, 'devFlags.ldapDebugMode', 'MASKED'))
+
       await WIKI.configSvc.applyFlags()
-      await WIKI.configSvc.saveToDb(['flags'])
+      await WIKI.configSvc.saveToDb(['flags', 'devFlags'])
       return {
         responseResult: graphHelper.generateSuccess('System Flags applied successfully')
+      }
+    },
+    async updateDevFlags (obj, args, context) {
+      _.set(WIKI.config, 'devFlags.ldapDebugEnabled', args.input.ldapDebugEnabled)
+      _.set(WIKI.config, 'devFlags.ldapDebugMode', normalizeLdapDebugMode(args.input.ldapDebugMode))
+      _.set(WIKI.config, 'devFlags.sqlLog', args.input.sqlLog)
+
+      // Maintain backward compatibility with legacy flags
+      _.set(WIKI.config, 'flags.ldapdebug', args.input.ldapDebugEnabled)
+      _.set(WIKI.config, 'flags.sqllog', args.input.sqlLog)
+
+      await WIKI.configSvc.applyFlags()
+      await WIKI.configSvc.saveToDb(['devFlags', 'flags'])
+      return {
+        responseResult: graphHelper.generateSuccess('Developer flags updated successfully')
       }
     },
     async resetTelemetryClientId (obj, args, context) {
