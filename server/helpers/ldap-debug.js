@@ -18,6 +18,17 @@ function setTraceId(req, traceId) {
   _.set(req, 'ldapDebug.traceId', traceId)
 }
 
+function isTerminalFailureLogged(req) {
+  return _.get(req, 'ldapDebug.terminalFailureLogged', false) === true
+}
+
+function setTerminalFailureLogged(req) {
+  if (!req) {
+    return
+  }
+  _.set(req, 'ldapDebug.terminalFailureLogged', true)
+}
+
 function getUsernameToken(username) {
   if (!username) {
     return null
@@ -55,10 +66,15 @@ function logLdapEvent({
   dn = null,
   searchFilter = null,
   error = null,
+  terminal = false,
   extra = {}
 }) {
   const { ldapDebugEnabled, ldapDebugMode } = getDevFlags()
   if (!ldapDebugEnabled) {
+    return
+  }
+
+  if (terminal && isTerminalFailureLogged(req)) {
     return
   }
 
@@ -93,6 +109,10 @@ function logLdapEvent({
   }
   const logLevel = _.has(logger, level) ? level : 'info'
   logger[logLevel](`[LDAP DEBUG] ${JSON.stringify(payload)}`)
+
+  if (terminal) {
+    setTerminalFailureLogged(req)
+  }
 }
 
 module.exports = {
@@ -100,5 +120,6 @@ module.exports = {
   getTraceId,
   setTraceId,
   logLdapEvent,
-  getUsernameToken
+  getUsernameToken,
+  isTerminalFailureLogged
 }

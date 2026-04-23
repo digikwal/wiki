@@ -310,7 +310,8 @@ module.exports = class User extends Model {
           outcome: 'success',
           username: opts.username,
           extra: {
-            providerType: selStrategy.strategyKey
+            providerType: selStrategy.strategyKey,
+            phase: 'users_login_strategy_selected'
           }
         })
       }
@@ -324,10 +325,40 @@ module.exports = class User extends Model {
 
       // Authenticate
       return new Promise((resolve, reject) => {
+        if (isLdapStrategy) {
+          logLdapEvent({
+            req: _.get(context, 'req'),
+            strategyKey: selStrategy.key,
+            stage: 'attempt',
+            outcome: 'success',
+            username: opts.username,
+            extra: {
+              phase: 'passport_authenticate_invoked'
+            }
+          })
+        }
+
         WIKI.auth.passport.authenticate(selStrategy.key, {
           session: !strInfo.useForm,
           scope: strInfo.scopes ? strInfo.scopes : null
         }, async (err, user, info) => {
+          if (isLdapStrategy) {
+            logLdapEvent({
+              req: _.get(context, 'req'),
+              strategyKey: selStrategy.key,
+              stage: 'attempt',
+              outcome: 'success',
+              username: opts.username,
+              extra: {
+                phase: 'passport_callback_received',
+                userResolved: Boolean(user),
+                hasInfo: Boolean(info),
+                infoType: _.get(info, 'name', null),
+                infoMessage: _.get(info, 'message', null)
+              }
+            })
+          }
+
           if (err) {
             if (isLdapStrategy) {
               logLdapEvent({
@@ -337,7 +368,14 @@ module.exports = class User extends Model {
                 outcome: 'failure',
                 level: 'warn',
                 username: opts.username,
-                error: err
+                error: err,
+                terminal: true,
+                extra: {
+                  phase: 'passport_callback_error',
+                  hasInfo: Boolean(info),
+                  infoType: _.get(info, 'name', null),
+                  infoMessage: _.get(info, 'message', null)
+                }
               })
             }
             return reject(err)
@@ -351,7 +389,14 @@ module.exports = class User extends Model {
                 outcome: 'failure',
                 level: 'warn',
                 username: opts.username,
-                error: new WIKI.Error.AuthLoginFailed()
+                error: new WIKI.Error.AuthLoginFailed(),
+                terminal: true,
+                extra: {
+                  phase: 'passport_callback_no_user',
+                  hasInfo: Boolean(info),
+                  infoType: _.get(info, 'name', null),
+                  infoMessage: _.get(info, 'message', null)
+                }
               })
             }
             return reject(new WIKI.Error.AuthLoginFailed())
@@ -368,7 +413,10 @@ module.exports = class User extends Model {
                 strategyKey: selStrategy.key,
                 stage: 'success',
                 outcome: 'success',
-                username: opts.username
+                username: opts.username,
+                extra: {
+                  phase: 'after_login_checks_completed'
+                }
               })
             }
             resolve(resp)
@@ -381,7 +429,11 @@ module.exports = class User extends Model {
                 outcome: 'failure',
                 level: 'warn',
                 username: opts.username,
-                error: err
+                error: err,
+                terminal: true,
+                extra: {
+                  phase: 'after_login_checks_failed'
+                }
               })
             }
             reject(err)

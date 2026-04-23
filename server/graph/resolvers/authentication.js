@@ -2,7 +2,7 @@ const _ = require('lodash')
 const fs = require('fs-extra')
 const path = require('path')
 const graphHelper = require('../../helpers/graph')
-const { createTraceId, setTraceId, logLdapEvent } = require('../../helpers/ldap-debug')
+const { createTraceId, setTraceId, logLdapEvent, isTerminalFailureLogged } = require('../../helpers/ldap-debug')
 
 /* global WIKI */
 
@@ -114,9 +114,12 @@ module.exports = {
               stage: 'strategy_lookup_failed',
               outcome: 'failure',
               level: 'warn',
-              error: new Error('Strategy lookup failed during login error handling')
+              error: new Error('Strategy lookup failed during login error handling'),
+              extra: {
+                phase: 'resolver_error_handler_strategy_lookup_missing'
+              }
             })
-          } else if (strategy.strategyKey === 'ldap') {
+          } else if (strategy.strategyKey === 'ldap' && !isTerminalFailureLogged(_.get(context, 'req'))) {
             logLdapEvent({
               req: _.get(context, 'req'),
               strategyKey: strategy.key,
@@ -124,7 +127,11 @@ module.exports = {
               outcome: 'failure',
               level: 'warn',
               username: args.username,
-              error: err
+              error: err,
+              terminal: true,
+              extra: {
+                phase: 'resolver_catch'
+              }
             })
           }
         } catch (lookupErr) {
@@ -134,7 +141,10 @@ module.exports = {
             stage: 'strategy_lookup',
             outcome: 'failure',
             level: 'warn',
-            error: lookupErr
+            error: lookupErr,
+            extra: {
+              phase: 'resolver_error_handler_strategy_lookup_failed'
+            }
           })
         }
 

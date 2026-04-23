@@ -48,7 +48,8 @@ module.exports = {
           searchFilter,
           extra: {
             ldapUrl,
-            tlsEnabled: conf.tlsEnabled === true
+            tlsEnabled: conf.tlsEnabled === true,
+            phase: 'ldap_strategy_callback_entered'
           }
         })
 
@@ -61,7 +62,8 @@ module.exports = {
             outcome: 'success',
             username: loginUsername,
             extra: {
-              hasUniqueId: !_.isNil(userId)
+              hasUniqueId: !_.isNil(userId),
+              phase: 'ldap_profile_mapped'
             }
           })
           if (!userId) {
@@ -99,7 +101,8 @@ module.exports = {
                 extra: {
                   providerGroupCount: groups.length,
                   expectedGroupCount: expectedGroups.length,
-                  currentGroupCount: currentGroups.length
+                  currentGroupCount: currentGroups.length,
+                  phase: 'ldap_group_mapping_completed'
                 }
               })
             } else {
@@ -110,7 +113,10 @@ module.exports = {
                 outcome: 'failure',
                 level: 'warn',
                 username: loginUsername,
-                error: new Error('Group mapping enabled but LDAP groups payload is missing or invalid')
+                error: new Error('Group mapping enabled but LDAP groups payload is missing or invalid'),
+                extra: {
+                  phase: 'ldap_group_mapping_payload_invalid'
+                }
               })
             }
           }
@@ -119,7 +125,10 @@ module.exports = {
             strategyKey,
             stage: 'success',
             outcome: 'success',
-            username: loginUsername
+            username: loginUsername,
+            extra: {
+              phase: 'ldap_strategy_callback_completed'
+            }
           })
           cb(null, user)
         } catch (err) {
@@ -130,7 +139,11 @@ module.exports = {
             outcome: 'failure',
             level: 'warn',
             username: loginUsername,
-            error: err
+            error: err,
+            terminal: true,
+            extra: {
+              phase: 'ldap_strategy_callback_failed'
+            }
           })
           cb(err, null)
         }
@@ -163,7 +176,8 @@ function getTlsOptions(conf) {
           level: 'warn',
           error: err,
           extra: {
-            tlsCertPath: conf.tlsCertPath
+            tlsCertPath: conf.tlsCertPath,
+            phase: 'ldap_tls_configuration'
           }
         })
       }
