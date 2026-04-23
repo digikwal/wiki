@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken')
 const Model = require('objection').Model
 const validate = require('validate.js')
 const qr = require('qr-image')
+const { logLdapEvent } = require('../helpers/ldap-debug')
 
 const bcryptRegexp = /^\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9./]{53}$/
 
@@ -297,7 +298,22 @@ module.exports = class User extends Model {
         throw new WIKI.Error.AuthProviderInvalid()
       }
 
+      const isLdapStrategy = selStrategy.strategyKey === 'ldap'
+
       const strInfo = _.find(WIKI.data.authentication, ['key', selStrategy.strategyKey])
+
+      if (isLdapStrategy) {
+        logLdapEvent({
+          req: _.get(context, 'req'),
+          strategyKey: selStrategy.key,
+          stage: 'strategy_lookup',
+          outcome: 'success',
+          username: opts.username,
+          extra: {
+            providerType: selStrategy.strategyKey
+          }
+        })
+      }
 
       // Inject form user/pass
       if (strInfo.useForm) {
@@ -312,16 +328,62 @@ module.exports = class User extends Model {
           session: !strInfo.useForm,
           scope: strInfo.scopes ? strInfo.scopes : null
         }, async (err, user, info) => {
-          if (err) { return reject(err) }
-          if (!user) { return reject(new WIKI.Error.AuthLoginFailed()) }
+          if (err) {
+            if (isLdapStrategy) {
+              logLdapEvent({
+                req: _.get(context, 'req'),
+                strategyKey: selStrategy.key,
+                stage: 'failure',
+                outcome: 'failure',
+                level: 'warn',
+                username: opts.username,
+                error: err
+              })
+            }
+            return reject(err)
+          }
+          if (!user) {
+            if (isLdapStrategy) {
+              logLdapEvent({
+                req: _.get(context, 'req'),
+                strategyKey: selStrategy.key,
+                stage: 'failure',
+                outcome: 'failure',
+                level: 'warn',
+                username: opts.username,
+                error: new WIKI.Error.AuthLoginFailed()
+              })
+            }
+            return reject(new WIKI.Error.AuthLoginFailed())
+          }
 
           try {
             const resp = await WIKI.models.users.afterLoginChecks(user, context, {
               skipTFA: !strInfo.useForm,
               skipChangePwd: !strInfo.useForm
             })
+            if (isLdapStrategy) {
+              logLdapEvent({
+                req: _.get(context, 'req'),
+                strategyKey: selStrategy.key,
+                stage: 'success',
+                outcome: 'success',
+                username: opts.username
+              })
+            }
             resolve(resp)
           } catch (err) {
+            if (isLdapStrategy) {
+              logLdapEvent({
+                req: _.get(context, 'req'),
+                strategyKey: selStrategy.key,
+                stage: 'failure',
+                outcome: 'failure',
+                level: 'warn',
+                username: opts.username,
+                error: err
+              })
+            }
             reject(err)
           }
         })(context.req, context.res, () => {})

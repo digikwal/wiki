@@ -7,6 +7,8 @@
 const LdapStrategy = require('passport-ldapauth').Strategy
 const fs = require('fs')
 const _ = require('lodash')
+const { logLdapEvent } = require('../../../helpers/ldap-debug')
+const { isLdapDebugEnabled } = require('../../../helpers/dev-flags')
 
 module.exports = {
   init (passport, conf) {
@@ -32,15 +34,36 @@ module.exports = {
         passwordField: 'password',
         passReqToCallback: true
       }, async (req, profile, cb) => {
-        const strategyKey = _.get(req, 'params.strategy', 'unknown')
+        const strategyKey = _.get(req, 'params.strategy', conf.key || 'unknown')
         const loginUsername = _.get(req, 'body.email', '')
+        const searchFilter = conf.searchFilter
+        const ldapUrl = conf.url
 
-        if (WIKI.config.flags.ldapdebug) {
-          WIKI.logger.info(`LDAP LOGIN ATTEMPT [strategy=${strategyKey}] [username=${loginUsername}]`)
-        }
+        logLdapEvent({
+          req,
+          strategyKey,
+          stage: 'attempt',
+          outcome: 'success',
+          username: loginUsername,
+          searchFilter,
+          extra: {
+            ldapUrl,
+            tlsEnabled: conf.tlsEnabled === true
+          }
+        })
 
         try {
           const userId = _.get(profile, conf.mappingUID, null)
+          logLdapEvent({
+            req,
+            strategyKey,
+            stage: 'profile_received',
+            outcome: 'success',
+            username: loginUsername,
+            extra: {
+              hasUniqueId: !_.isNil(userId)
+            }
+          })
           if (!userId) {
             throw new Error('Invalid Unique ID field mapping!')
           }
@@ -67,15 +90,48 @@ module.exports = {
               for (const groupId of _.difference(currentGroups, expectedGroups)) {
                 await user.$relatedQuery('groups').unrelate().where('groupId', groupId)
               }
-            } else if (WIKI.config.flags.ldapdebug) {
-              WIKI.logger.warn(`LDAP LOGIN WARNING: group mapping enabled but LDAP groups payload is missing or invalid [strategy=${strategyKey}]`)
+              logLdapEvent({
+                req,
+                strategyKey,
+                stage: 'group_mapping',
+                outcome: 'success',
+                username: loginUsername,
+                extra: {
+                  providerGroupCount: groups.length,
+                  expectedGroupCount: expectedGroups.length,
+                  currentGroupCount: currentGroups.length
+                }
+              })
+            } else {
+              logLdapEvent({
+                req,
+                strategyKey,
+                stage: 'group_mapping',
+                outcome: 'failure',
+                level: 'warn',
+                username: loginUsername,
+                error: new Error('Group mapping enabled but LDAP groups payload is missing or invalid')
+              })
             }
           }
+          logLdapEvent({
+            req,
+            strategyKey,
+            stage: 'success',
+            outcome: 'success',
+            username: loginUsername
+          })
           cb(null, user)
         } catch (err) {
-          if (WIKI.config.flags.ldapdebug) {
-            WIKI.logger.warn(`LDAP LOGIN ERROR (c2) [strategy=${strategyKey}] [username=${loginUsername}]: `, err)
-          }
+          logLdapEvent({
+            req,
+            strategyKey,
+            stage: 'failure',
+            outcome: 'failure',
+            level: 'warn',
+            username: loginUsername,
+            error: err
+          })
           cb(err, null)
         }
       }
@@ -99,6 +155,18 @@ function getTlsOptions(conf) {
     try {
       caList.push(fs.readFileSync(conf.tlsCertPath))
     } catch (err) {
+      if (isLdapDebugEnabled()) {
+        logLdapEvent({
+          strategyKey: conf.key || 'ldap',
+          stage: 'tls_config_error',
+          outcome: 'failure',
+          level: 'warn',
+          error: err,
+          extra: {
+            tlsCertPath: conf.tlsCertPath
+          }
+        })
+      }
       throw new Error(`Failed to read LDAP TLS certificate at path ${conf.tlsCertPath}: ${err.message}`)
     }
   }

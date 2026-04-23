@@ -2,6 +2,7 @@ const _ = require('lodash')
 const fs = require('fs-extra')
 const path = require('path')
 const graphHelper = require('../../helpers/graph')
+const { createTraceId, setTraceId, logLdapEvent } = require('../../helpers/ldap-debug')
 
 /* global WIKI */
 
@@ -94,6 +95,9 @@ module.exports = {
      * Perform Login
      */
     async login (obj, args, context) {
+      const traceId = createTraceId()
+      setTraceId(_.get(context, 'req'), traceId)
+
       try {
         const authResult = await WIKI.models.users.login(args, context)
         return {
@@ -101,18 +105,37 @@ module.exports = {
           responseResult: graphHelper.generateSuccess('Login success')
         }
       } catch (err) {
-        // LDAP Debug Flag
-        if (WIKI.config.flags.ldapdebug) {
-          try {
-            const strategy = await WIKI.models.authentication.getStrategy(args.strategy)
-            if (strategy?.strategyKey === 'ldap') {
-              WIKI.logger.warn(`LDAP LOGIN ERROR (c1) [strategy=${args.strategy}]: `, err)
-            } else if (!strategy) {
-              WIKI.logger.warn(`LDAP DEBUG: strategy lookup failed [strategy=${args.strategy}]`)
-            }
-          } catch (lookupErr) {
-            WIKI.logger.warn(`LDAP DEBUG: strategy lookup exception [strategy=${args.strategy}]: `, lookupErr)
+        try {
+          const strategy = await WIKI.models.authentication.getStrategy(args.strategy)
+          if (!strategy) {
+            logLdapEvent({
+              req: _.get(context, 'req'),
+              strategyKey: args.strategy,
+              stage: 'strategy_lookup_failed',
+              outcome: 'failure',
+              level: 'warn',
+              error: new Error('Strategy lookup failed during login error handling')
+            })
+          } else if (strategy.strategyKey === 'ldap') {
+            logLdapEvent({
+              req: _.get(context, 'req'),
+              strategyKey: strategy.key,
+              stage: 'failure',
+              outcome: 'failure',
+              level: 'warn',
+              username: args.username,
+              error: err
+            })
           }
+        } catch (lookupErr) {
+          logLdapEvent({
+            req: _.get(context, 'req'),
+            strategyKey: args.strategy,
+            stage: 'strategy_lookup',
+            outcome: 'failure',
+            level: 'warn',
+            error: lookupErr
+          })
         }
 
         return graphHelper.generateError(err)
