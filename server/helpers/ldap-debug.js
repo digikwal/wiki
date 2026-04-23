@@ -102,17 +102,57 @@ function logLdapEvent({
     ...basePayload,
     ...extra
   }
+  const compactedPayload = compactPayload(payload)
 
   const logger = _.get(global, 'WIKI.logger')
   if (!logger) {
     return
   }
   const logLevel = _.has(logger, level) ? level : 'info'
-  logger[logLevel](`[LDAP DEBUG] ${JSON.stringify(payload)}`)
+  logger[logLevel](formatLdapDebugMessage(compactedPayload))
 
   if (terminal) {
     setTerminalFailureLogged(req)
   }
+}
+
+function compactPayload(payload) {
+  return _.pickBy(payload, value => {
+    if (_.isNil(value)) {
+      return false
+    }
+    if (_.isString(value) && value.length === 0) {
+      return false
+    }
+    if (_.isArray(value) && value.length === 0) {
+      return false
+    }
+    if (_.isPlainObject(value) && _.isEmpty(value)) {
+      return false
+    }
+    return true
+  })
+}
+
+function formatLdapDebugMessage(payload) {
+  const summaryKeys = ['event', 'stage', 'outcome', 'phase', 'traceId', 'strategyKey', 'errorClass', 'errorCode', 'errorMessage']
+  const summaryParts = []
+
+  for (const key of summaryKeys) {
+    if (!_.has(payload, key)) continue
+    if (key === 'errorMessage') {
+      summaryParts.push(`${key}=${JSON.stringify(payload[key])}`)
+    } else {
+      summaryParts.push(`${key}=${payload[key]}`)
+    }
+  }
+
+  const details = _.omit(payload, summaryKeys)
+  if (!_.isEmpty(details)) {
+    summaryParts.push(`data=${JSON.stringify(details)}`)
+  }
+
+  return `[LDAP DEBUG] ${summaryParts.join(' ')}`
 }
 
 module.exports = {
