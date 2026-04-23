@@ -32,6 +32,13 @@ module.exports = {
         passwordField: 'password',
         passReqToCallback: true
       }, async (req, profile, cb) => {
+        const strategyKey = _.get(req, 'params.strategy', 'unknown')
+        const loginUsername = _.get(req, 'body.email', '')
+
+        if (WIKI.config.flags.ldapdebug) {
+          WIKI.logger.info(`LDAP LOGIN ATTEMPT [strategy=${strategyKey}] [username=${loginUsername}]`)
+        }
+
         try {
           const userId = _.get(profile, conf.mappingUID, null)
           if (!userId) {
@@ -60,12 +67,14 @@ module.exports = {
               for (const groupId of _.difference(currentGroups, expectedGroups)) {
                 await user.$relatedQuery('groups').unrelate().where('groupId', groupId)
               }
+            } else if (WIKI.config.flags.ldapdebug) {
+              WIKI.logger.warn(`LDAP LOGIN WARNING: group mapping enabled but LDAP groups payload is missing or invalid [strategy=${strategyKey}]`)
             }
           }
           cb(null, user)
         } catch (err) {
           if (WIKI.config.flags.ldapdebug) {
-            WIKI.logger.warn('LDAP LOGIN ERROR (c2): ', err)
+            WIKI.logger.warn(`LDAP LOGIN ERROR (c2) [strategy=${strategyKey}] [username=${loginUsername}]: `, err)
           }
           cb(err, null)
         }
@@ -87,7 +96,11 @@ function getTlsOptions(conf) {
 
   const caList = []
   if (conf.verifyTLSCertificate) {
-    caList.push(fs.readFileSync(conf.tlsCertPath))
+    try {
+      caList.push(fs.readFileSync(conf.tlsCertPath))
+    } catch (err) {
+      throw new Error(`Failed to read LDAP TLS certificate at path ${conf.tlsCertPath}: ${err.message}`)
+    }
   }
 
   return {

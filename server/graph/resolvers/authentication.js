@@ -102,8 +102,17 @@ module.exports = {
         }
       } catch (err) {
         // LDAP Debug Flag
-        if (args.strategy === 'ldap' && WIKI.config.flags.ldapdebug) {
-          WIKI.logger.warn('LDAP LOGIN ERROR (c1): ', err)
+        if (WIKI.config.flags.ldapdebug) {
+          try {
+            const strategy = await WIKI.models.authentication.getStrategy(args.strategy)
+            if (strategy?.strategyKey === 'ldap') {
+              WIKI.logger.warn(`LDAP LOGIN ERROR (c1) [strategy=${args.strategy}]: `, err)
+            } else if (!strategy) {
+              WIKI.logger.warn(`LDAP DEBUG: strategy lookup failed [strategy=${args.strategy}]`)
+            }
+          } catch (lookupErr) {
+            WIKI.logger.warn(`LDAP DEBUG: strategy lookup exception [strategy=${args.strategy}]: `, lookupErr)
+          }
         }
 
         return graphHelper.generateError(err)
