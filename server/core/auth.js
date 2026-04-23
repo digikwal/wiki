@@ -10,6 +10,8 @@ const randomBytesAsync = require('util').promisify(crypto.randomBytes)
 
 const commonHelper = require('../helpers/common')
 const securityHelper = require('../helpers/security')
+const { getDevFlags, LDAP_DEBUG_MODES } = require('../helpers/dev-flags')
+const { logLdapEvent } = require('../helpers/ldap-debug')
 
 /* global WIKI */
 
@@ -84,6 +86,7 @@ module.exports = {
 
           stg.config.callbackURL = `${WIKI.config.host}/login/${stg.key}/callback`
           stg.config.key = stg.key
+          logLdapStrategyConfig(stg)
           strategy.init(passport, stg.config)
           strategy.config = stg.config
 
@@ -93,6 +96,7 @@ module.exports = {
           }
           WIKI.logger.info(`Authentication Strategy ${stg.displayName}: [ OK ]`)
         } catch (err) {
+          logLdapStrategyActivationFailure(stg, err)
           WIKI.logger.error(`Authentication Strategy ${stg.displayName} (${stg.key}): [ FAILED ]`)
           WIKI.logger.error(err)
         }
@@ -526,4 +530,65 @@ module.exports = {
   revokeUserTokens ({ id, kind = 'u' }) {
     WIKI.auth.revocationList.set(`${kind}${_.toString(id)}`, Math.round(DateTime.utc().minus({ seconds: 5 }).toSeconds()), Math.ceil(ms(WIKI.config.auth.tokenExpiration) / 1000))
   }
+}
+
+function redactForMode(value, isVerbose) {
+  if (_.isNil(value) || value === '') {
+    return null
+  }
+  return isVerbose ? value : '[REDACTED]'
+}
+
+function logLdapStrategyConfig(stg) {
+  if (_.get(stg, 'strategyKey') !== 'ldap') {
+    return
+  }
+  const devFlags = getDevFlags()
+  if (!devFlags.ldapDebugEnabled) {
+    return
+  }
+  const isVerbose = devFlags.ldapDebugMode === LDAP_DEBUG_MODES.VERBOSE
+  const config = _.get(stg, 'config', {})
+  logLdapEvent({
+    strategyKey: stg.key,
+    stage: 'strategy_config',
+    outcome: 'success',
+    searchFilter: _.get(config, 'searchFilter', null),
+    extra: {
+      phase: 'strategy_activation_config',
+      providerType: stg.strategyKey,
+      strategyDisplayName: stg.displayName,
+      ldapUrl: _.get(config, 'url', null),
+      tlsEnabled: _.get(config, 'tlsEnabled', false) === true,
+      verifyTLSCertificate: _.get(config, 'verifyTLSCertificate', false) === true,
+      tlsCertPath: redactForMode(_.get(config, 'tlsCertPath', null), isVerbose),
+      bindDn: redactForMode(_.get(config, 'bindDn', null), isVerbose),
+      searchBase: redactForMode(_.get(config, 'searchBase', null), isVerbose),
+      mapGroups: _.get(config, 'mapGroups', false) === true,
+      groupSearchBase: redactForMode(_.get(config, 'groupSearchBase', null), isVerbose),
+      groupSearchFilter: redactForMode(_.get(config, 'groupSearchFilter', null), isVerbose)
+    }
+  })
+}
+
+function logLdapStrategyActivationFailure(stg, err) {
+  if (_.get(stg, 'strategyKey') !== 'ldap') {
+    return
+  }
+  const devFlags = getDevFlags()
+  if (!devFlags.ldapDebugEnabled) {
+    return
+  }
+  logLdapEvent({
+    strategyKey: _.get(stg, 'key', 'ldap'),
+    stage: 'strategy_activation_failed',
+    outcome: 'failure',
+    level: 'warn',
+    error: err,
+    extra: {
+      phase: 'strategy_activation_failed',
+      providerType: _.get(stg, 'strategyKey', null),
+      strategyDisplayName: _.get(stg, 'displayName', null)
+    }
+  })
 }
