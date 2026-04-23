@@ -19,7 +19,7 @@
           v-card-text
             v-switch.mt-3(
               color='primary'
-              hint='Log detailed debug info on LDAP/AD login attempts.'
+              hint='Log additional debug info on LDAP/AD login attempts.'
               persistent-hint
               label='LDAP Debug'
               v-model='flags.ldapdebug'
