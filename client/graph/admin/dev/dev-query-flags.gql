@@ -1,8 +1,9 @@
 {
   system {
-    flags {
-      key
-      value
+    devFlags {
+      ldapDebugEnabled
+      ldapDebugMode
+      sqlLog
     }
   }
 }

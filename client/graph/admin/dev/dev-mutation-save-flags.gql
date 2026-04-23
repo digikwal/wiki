@@ -1,9 +1,9 @@
 mutation (
-  $flags: [SystemFlagInput]!
+  $input: SystemDevFlagsInput!
 ) {
   system {
-    updateFlags(
-      flags: $flags
+    updateDevFlags(
+      input: $input
     ) {
       responseResult {
         succeeded

@@ -19,25 +19,43 @@
           v-card-text
             v-switch.mt-3(
               color='primary'
-              hint='Log additional debug info on LDAP/AD login attempts.'
+              hint='Enable stage-based LDAP diagnostics logs for login troubleshooting.'
               persistent-hint
               label='LDAP Debug'
-              v-model='flags.ldapdebug'
+              v-model='devFlags.ldapDebugEnabled'
               inset
             )
+            v-select.mt-3(
+              :items='ldapDebugModeItems'
+              item-text='text'
+              item-value='value'
+              label='LDAP Debug Mode'
+              hint='MASKED hides sensitive values and logs stable tokens. VERBOSE logs raw LDAP fields for deep troubleshooting.'
+              persistent-hint
+              v-model='devFlags.ldapDebugMode'
+              :disabled='!devFlags.ldapDebugEnabled'
+              outlined
+              dense
+            )
+            v-alert.mt-3(
+              v-if='devFlags.ldapDebugEnabled && devFlags.ldapDebugMode === `VERBOSE`'
+              color='orange darken-2'
+              dark
+              dense
+              icon='mdi-shield-alert'
+            ) VERBOSE mode may log sensitive LDAP values. Use temporarily and rotate logs if needed.
             v-divider.mt-3
             v-switch.mt-3(
               color='red'
               hint='Log all queries made to the database to console.'
               persistent-hint
               label='SQL Query Logging'
-              v-model='flags.sqllog'
+              v-model='devFlags.sqlLog'
               inset
             )
 </template>
 
 <script>
-import _ from 'lodash'
 
 import flagsQuery from 'gql/admin/dev/dev-query-flags.gql'
 import flagsMutation from 'gql/admin/dev/dev-mutation-save-flags.gql'
@@ -45,9 +63,15 @@ import flagsMutation from 'gql/admin/dev/dev-mutation-save-flags.gql'
 export default {
   data() {
     return {
-      flags: {
-        sqllog: false
-      }
+      devFlags: {
+        ldapDebugEnabled: false,
+        ldapDebugMode: 'MASKED',
+        sqlLog: false
+      },
+      ldapDebugModeItems: [
+        { text: 'MASKED (Default, safer)', value: 'MASKED' },
+        { text: 'VERBOSE (Temporary troubleshooting)', value: 'VERBOSE' }
+      ]
     }
   },
   methods: {
@@ -56,9 +80,11 @@ export default {
         await this.$apollo.mutate({
           mutation: flagsMutation,
           variables: {
-            flags: _.transform(this.flags, (result, value, key) => {
-              result.push({ key, value })
-            }, [])
+            input: {
+              ldapDebugEnabled: this.devFlags.ldapDebugEnabled,
+              ldapDebugMode: this.devFlags.ldapDebugMode,
+              sqlLog: this.devFlags.sqlLog
+            }
           },
           watchLoading (isLoading) {
             this.$store.commit(`loading${isLoading ? 'Start' : 'Stop'}`, 'admin-dev-flags-update')
@@ -75,12 +101,10 @@ export default {
     }
   },
   apollo: {
-    flags: {
+    devFlags: {
       query: flagsQuery,
       fetchPolicy: 'network-only',
-      update: (data) => _.transform(data.system.flags, (result, row) => {
-        _.set(result, row.key, row.value)
-      }, {}),
+      update: (data) => data.system.devFlags,
       watchLoading (isLoading) {
         this.$store.commit(`loading${isLoading ? 'Start' : 'Stop'}`, 'admin-dev-flags-refresh')
       }
