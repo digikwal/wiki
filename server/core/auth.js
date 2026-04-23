@@ -87,6 +87,9 @@ module.exports = {
           stg.config.callbackURL = `${WIKI.config.host}/login/${stg.key}/callback`
           stg.config.key = stg.key
           logLdapStrategyConfig(stg)
+          if (_.isFunction(strategy.preflight)) {
+            await strategy.preflight(stg.config)
+          }
           strategy.init(passport, stg.config)
           strategy.config = stg.config
 
